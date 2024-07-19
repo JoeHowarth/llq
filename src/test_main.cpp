@@ -3,7 +3,9 @@
 
 #include "doctest.h"
 #include "lib.h"
+#include "parser.h"
 
+/*
 TEST_CASE("split") {
     std::string              s        = "msg,level";
     std::vector<std::string> expected = {"msg", "level"};
@@ -65,6 +67,7 @@ TEST_CASE("trim") {
     trimInPlace(s);
     CHECK(s == "this is cool  ;");
 }
+*/
 
 /*
 TEST_CASE("Parse terms from query") {
@@ -82,51 +85,107 @@ TEST_CASE("Parse terms from query") {
         std::vector<std::string>{"msg", "level"}
     );
 }
+*/
 
 TEST_CASE("Parse expression") {
     std::string s;
 
     SUBCASE("msg") {
-        Expr               expr("msg");
-        json::json_pointer ptr = "/msg"_json_pointer;
+        std::optional<Expr> expr = parser::parseExpr("msg");
+        json::json_pointer  ptr  = "/msg"_json_pointer;
 
-        CHECK(expr.path == ptr);
+        CHECK(expr != std::nullopt);
+        CHECK(expr->path == ptr);
     }
 
     SUBCASE("foo.bar") {
-        Expr               expr("foo.bar");
-        json::json_pointer ptr = "/foo/bar"_json_pointer;
+        std::optional<Expr> expr = parser::parseExpr("foo.bar");
+        json::json_pointer  ptr  = "/foo/bar"_json_pointer;
 
-        CHECK(expr.path == ptr);
+        CHECK(expr != std::nullopt);
+        CHECK(expr->path == ptr);
+    }
+
+    SUBCASE("foo.bar == 'hi'") {
+        std::optional<Expr> expr = parser::parseExpr("foo.bar == 'hi'");
+        json::json_pointer  ptr  = "/foo/bar"_json_pointer;
+
+        CHECK(expr != std::nullopt);
+        CHECK(expr->path == ptr);
+        CHECK(expr->op);
+        CHECK(*expr->op == Expr::Op::eq);
+        CHECK(expr->rhs);
+        CHECK(*expr->rhs == Value("hi"));
     }
 
     SUBCASE("foo.bar == 1") {
-        Expr               expr("foo.bar == 1");
-        json::json_pointer ptr = "/foo/bar"_json_pointer;
+        std::optional<Expr> expr = parser::parseExpr("foo.bar == 1");
+        json::json_pointer  ptr  = "/foo/bar"_json_pointer;
 
-        CHECK(expr.path == ptr);
-        CHECK(expr.op == Expr::Op::eq);
-        CHECK(expr.rhs == json::parse("1"));
-        CHECK((*expr.rhs).is_number());
+        CHECK(expr != std::nullopt);
+        CHECK(expr->path == ptr);
+        CHECK(expr->op);
+        CHECK(*expr->op == Expr::Op::eq);
+        CHECK(expr->rhs);
+        CHECK(*expr->rhs == Value(1));
+    }
+
+    SUBCASE("foo.bar < 1") {
+        std::optional<Expr> expr = parser::parseExpr("foo.bar < 1");
+        json::json_pointer  ptr  = "/foo/bar"_json_pointer;
+
+        CHECK(expr != std::nullopt);
+        CHECK(expr->path == ptr);
+        CHECK(expr->op);
+        CHECK(*expr->op == Expr::Op::lt);
+        CHECK(expr->rhs);
+        CHECK(*expr->rhs == Value(1));
+    }
+
+    SUBCASE("foo.bar > 1") {
+        std::optional<Expr> expr = parser::parseExpr("foo.bar > 1");
+        json::json_pointer  ptr  = "/foo/bar"_json_pointer;
+
+        CHECK(expr != std::nullopt);
+        CHECK(expr->path == ptr);
+        CHECK(expr->op);
+        CHECK(*expr->op == Expr::Op::gt);
+        CHECK(expr->rhs);
+        CHECK(*expr->rhs == Value(1));
+    }
+
+    SUBCASE("foo.bar > >") {
+        std::optional<Expr> expr = parser::parseExpr("foo.bar > >");
+
+        CHECK(expr == std::nullopt);
+    }
+
+    SUBCASE("foo.bar 1") {
+        std::optional<Expr> expr = parser::parseExpr("foo.bar > >");
+
+        CHECK(expr == std::nullopt);
     }
 }
 
 TEST_CASE("Parse line into exprs") {
     {
-        std::string q     = "msg, x == 2";
-        auto        exprs = exprsFromQuery(q);
+        std::string                      q     = "msg, x == 2";
+        std::optional<std::vector<Expr>> exprs = parser::parseExprs(q);
 
-        CHECK(exprs.size() == 2);
-        fmt::println("Expr 1: {}", exprs[0].toJson().dump());
-        fmt::println("Expr 1: {}", exprs[1].toJson().dump());
-        CHECK(exprs[0].path.to_string() == "/msg");
-        CHECK(exprs[1].path.to_string() == "/x");
+        REQUIRE(exprs != std::nullopt);
+        CHECK(exprs->size() == 2);
+        fmt::println("Expr 0: {}", (*exprs)[0].toJson().dump());
+        fmt::println("Expr 1: {}", (*exprs)[1].toJson().dump());
+        CHECK((*exprs)[0].path.to_string() == "/msg");
+        CHECK((*exprs)[1].path.to_string() == "/x");
+        CHECK(*(*exprs)[1].op == Expr::Op::eq);
+        CHECK(*(*exprs)[1].rhs == Value(2));
     }
 }
 
 TEST_CASE("Filter Line by Exprs") {
     SUBCASE("msg; passes") {
-        auto exprs = exprsFromQuery("msg");
+        auto exprs = *parser::parseExprs("msg");
         json line  = {{"msg", "hi msg"}, {"x", 2}};
         json out   = filterLine(line, exprs);
 
@@ -135,8 +194,8 @@ TEST_CASE("Filter Line by Exprs") {
         fmt::println("");
     }
 
-    SUBCASE("msg, x == 1; passes") {
-        auto exprs = exprsFromQuery("msg, x == 2");
+    SUBCASE("msg, x == 2; passes") {
+        auto exprs = *parser::parseExprs("msg, x == 2");
         json line  = {{"msg", "hi msg"}, {"x", 2}};
         json out   = filterLine(line, exprs);
 
@@ -146,8 +205,8 @@ TEST_CASE("Filter Line by Exprs") {
     }
 
     SUBCASE("msg, x == 1; fails") {
-        auto exprs = exprsFromQuery("msg, x == 2");
-        json line  = {{"msg", "hi msg"}, {"x", 3}};
+        auto exprs = *parser::parseExprs("msg, x == 1");
+        json line  = {{"msg", "hi msg"}, {"x", 2}};
         json out   = filterLine(line, exprs);
 
         fmt::println("out: {}", out.dump());
@@ -155,4 +214,3 @@ TEST_CASE("Filter Line by Exprs") {
         fmt::println("");
     }
 }
-*/

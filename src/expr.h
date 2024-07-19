@@ -112,10 +112,6 @@ class Expr {
         fzf
     };
 
-    static std::optional<Expr> make(const std::vector<std::string>& path, std::optional<Op> op, std::optional<std::variant<std::string, double>> rhs) {
-        return std::nullopt;
-    }
-
     json::json_pointer   path;
     std::optional<Op>    op;
     std::optional<Value> rhs;
@@ -123,31 +119,28 @@ class Expr {
     [[nodiscard]] std::string to_string() const {
         std::string s = path.to_string();
         if (op) {
-            return fmt::format("{} {} {}", 
-path.to_string(), 
-                               op_str(*op),
-                               rhs->to_string()
-                               );
+            return fmt::format(
+                "{} {} {}", path.to_string(), op_str(*op), rhs->to_string()
+            );
         }
         return s;
     }
 
     static std::string op_str(Op op) {
-            switch (op) {
-                case Op::lt:
+        switch (op) {
+            case Op::lt:
                 return "<";
-                case Op::eq:
-            return "==";
-                case Op::gt:
+            case Op::eq:
+                return "==";
+            case Op::gt:
                 return ">";
-                case Op::in:
-                  return "in";
-                case Op::fzf:
+            case Op::in:
+                return "in";
+            case Op::fzf:
                 return "fzf";
-            };
+        };
     }
 
-    
     [[nodiscard]] json toJson() const {
         json j = {
             {"path", this->path.to_string()},

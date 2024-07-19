@@ -8,8 +8,8 @@
 #include <chrono>
 #include <thread>
 
-#include "logging.h"
 #include "expr.h"
+#include "logging.h"
 
 namespace ranges = std::ranges;
 
@@ -161,8 +161,28 @@ json filterLine(
 //     return exprs;
 // }
 
+bool opMatches(const Value& val, const Value& rhs, const Expr::Op& op) {
+    switch (op) {
+        case Expr::Op::eq:
+            Log::info("[FilterLine]: op is eq");
+            return val == rhs;
+        case Expr::Op::lt:
+            Log::info("[FilterLine]: op is lt");
+            return val < rhs;
+        case Expr::Op::gt:
+            Log::info("[FilterLine]: op is gt");
+            return val > rhs;
+        case Expr::Op::in:
+            Log::info("[FilterLine]: op is in");
+            break;
+        case Expr::Op::fzf:
+            Log::info("[FilterLine]: op is fzf");
+            break;
+    }
+    return true;
+}
+
 json filterLine(json line, const std::vector<Expr>& terms) {
-    // json flat = line.flatten();
     json out;
     for (const Expr& expr : terms) {
         if (!line.contains(expr.path)) {
@@ -171,33 +191,25 @@ json filterLine(json line, const std::vector<Expr>& terms) {
             return {};
         }
 
-        json& val = line.at(expr.path);
-        Log::info("[FilterLine]", {{"expr", expr.toJson()}, {"atPath", val}});
+        json& json_at_path = line.at(expr.path);
+        Log::info(
+            "[FilterLine]", {{"expr", expr.toJson()}, {"atPath", json_at_path}}
+        );
 
         if (expr.op) {
             assert(expr.rhs);
-            switch (*expr.op) {
-                case Expr::Op::eq:
-                    Log::info("[FilterLine]: op is eq");
-                    if (Value::from_json(val) != *expr.rhs) {
-                        return {};
-                    }
-                    break;
-                case Expr::Op::lt:
-                    Log::info("[FilterLine]: op is lt");
-                    break;
-                case Expr::Op::gt:
-                    Log::info("[FilterLine]: op is gt");
-                    break;
-                case Expr::Op::in:
-                    Log::info("[FilterLine]: op is in");
-                    break;
-                case Expr::Op::fzf:
-                    Log::info("[FilterLine]: op is fzf");
-                    break;
+            std::optional<Value> val = Value::from_json(json_at_path);
+            if (!val) {
+                Log::info(
+                    "Json at path is not a leaf Value",
+                    {{"json_at_path", json_at_path}}
+                );
+                return {};
+            }
+            if (!opMatches(*val, *expr.rhs, *expr.op)) {
+                return {};
             }
         }
-
         out[expr.path] = line[expr.path];
     }
     return out;

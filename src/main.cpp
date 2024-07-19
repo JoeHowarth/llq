@@ -1,8 +1,8 @@
 #include <fmt/core.h>
+
 #include "lib.h"
 #include "logging.h"
 #include "parser.h"
-
 
 int main() {
     Log::init("log.json");

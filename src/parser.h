@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fmt/core.h>
+
 #include <boost/fusion/include/adapt_struct.hpp>
 #include <boost/spirit/home/x3.hpp>
 #include <boost/spirit/home/x3/core/parse.hpp>
@@ -21,17 +22,18 @@ namespace ascii = boost::spirit::x3::ascii;
 namespace parser {
 
 struct Expression {
-    std::vector<std::string> path;
-    Expr::Op op;
-    x3::variant<double, std::string> rhs;
+    std::vector<std::string>                        path;
+    std::optional<Expr::Op>                         op;
+    std::optional<x3::variant<double, std::string>> rhs;
     // std::string rhs;
 };
 
-} // namespace parser
+}  // namespace parser
 
 BOOST_FUSION_ADAPT_STRUCT(parser::Expression, path, op, rhs);
 
 namespace parser {
+
 // Symbol table for operators
 struct op_symbols : x3::symbols<Expr::Op> {
     op_symbols() {
@@ -47,9 +49,10 @@ x3::rule<class qs, std::string> single_quoted_string = "qs";
 
 // Define the parser for a single-quoted string
 auto const single_quoted_string_def = x3::lexeme
-    ['\'' >> x3::lexeme[*(('\\' >> x3::char_('\'')) |  // handle escaped single quotes
-                            ('\\' >> x3::char_('\\')) |  // handle escaped backslashes
-                            (~x3::char_('\'')))] >>
+    ['\'' >> x3::lexeme
+                 [*(('\\' >> x3::char_('\'')) |  // handle escaped single quotes
+                    ('\\' >> x3::char_('\\')) |  // handle escaped backslashes
+                    (~x3::char_('\'')))] >>
      '\''];
 
 BOOST_SPIRIT_DEFINE(single_quoted_string);
@@ -57,29 +60,89 @@ BOOST_SPIRIT_DEFINE(single_quoted_string);
 // Define the parser for the path
 auto const path = x3::lexeme[+x3::alpha % '.'];
 
+x3::rule<class rhs, std::optional<x3::variant<double, std::string>>> rhs =
+    "rhs";
 // Define the parser for the RHS
 // auto const rhs = single_quoted_string | x3::double_;
-auto const rhs = x3::double_ | single_quoted_string ;
+auto const rhs_def = x3::double_ | single_quoted_string;
+BOOST_SPIRIT_DEFINE(rhs);
 
 // Define the parser for the expression
-auto const expr = path >> op_table >> rhs;
+x3::rule<class expr, Expression> expr     = "expr";
+auto const                       expr_def = path >> -op_table >> -(rhs);
+BOOST_SPIRIT_DEFINE(expr);
+
+auto const exprs = expr % ',';
 
 // Define the types to hold the parsed attributes
 using expr_type = Expression;
 
-std::optional<expr_type> parseExpr(const std::string& input) {
-    expr_type parsed_expr;
-    auto iter = input.begin();
-    auto end = input.end();
-    
-    bool r = x3::phrase_parse(iter, end, rhs, x3::space, parsed_expr.rhs);
+void toExpr(const Expression& parsed, Expr& ex) {
+    for (const auto& segment : parsed.path) {
+        ex.path.push_back(segment);
+    }
 
-    // bool r = x3::phrase_parse(iter, end, expr, x3::space, parsed_expr);
+    ex.op = parsed.op;
+    if (parsed.rhs) {
+        if (const auto* d = boost::get<double>(&*parsed.rhs)) {
+            ex.rhs = Value(*d);
+        } else if (const auto* s = boost::get<std::string>(&*parsed.rhs)) {
+            ex.rhs = Value(*s);
+        }
+    }
+}
+
+template <typename out_t, typename attr_t, typename Func>
+std::optional<out_t>
+parseGeneric(const std::string& input, const auto rule, Func func) {
+    attr_t parsed;
+    out_t  out;
+    auto   iter = input.begin();
+    auto   end  = input.end();
+
+    bool r = x3::phrase_parse(iter, end, rule, x3::space, parsed);
     if (r && iter == end) {
-        return parsed_expr;
+        func(parsed, out);
+        return out;
     }
     return std::nullopt;
 }
 
+std::optional<std::vector<Expr>> parseExprs(const std::string& input) {
+    using out_t  = std::vector<Expr>;
+    using attr_t = std::vector<expr_type>;
+
+    const auto f = [](const attr_t& p_vec, out_t& out) {
+        out       = out_t(p_vec.size());
+        auto size = p_vec.size();
+        for (int i = 0; i < size; ++i) {
+            toExpr(p_vec[i], out[i]);
+        }
+    };
+    return parseGeneric<out_t, attr_t>(input, exprs, f);
+}
+std::optional<Expr> parseExpr(const std::string& input) {
+    using out_t  = Expr;
+    using attr_t = expr_type;
+
+    return parseGeneric<out_t, attr_t>(input, expr, toExpr);
+}
+
+/*
+std::optional<Expr> parseExprOld(const std::string& input) {
+    expr_type parsed;
+    auto      iter = input.begin();
+    auto      end  = input.end();
+
+    bool r = x3::phrase_parse(iter, end, expr, x3::space, parsed);
+    if (r && iter == end) {
+        // TODO: make not trash
+        Expr ex;
+        toExpr(parsed, ex);
+        return std::move(ex);
+    }
+    return std::nullopt;
+}
+*/
+
 }  // namespace parser
-  // namespace parser
