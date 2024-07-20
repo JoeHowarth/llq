@@ -1,64 +1,143 @@
 #include <fmt/core.h>
 
+#include <algorithm>                           // for max, min
+#include <ftxui/component/component_base.hpp>  // for Component, ComponentBase
+#include <ftxui/component/event.hpp>  // for Event, Event::ArrowDown, Event::ArrowUp, Event::End, Event::Home, Event::PageDown, Event::PageUp
 #include <ftxui/dom/linear_gradient.hpp>  // for LinearGradient
 #include <ftxui/screen/color.hpp>  // for Color, Color::White, Color::Red, Color::Blue, Color::Black, Color::GrayDark, ftxui
 #include <functional>              // for function
 #include <memory>                  // for allocator, __shared_ptr_access
-#include <string>  // for char_traits, operator+, string, basic_string
+#include <string>   // for char_traits, operator+, string, basic_string
+#include <utility>  // for move
 
-#include "ftxui/component/component.hpp"       // for Input, Renderer, Vertical
-#include "ftxui/component/component_base.hpp"  // for ComponentBase
+#include "ftxui/component/component.hpp"  // for Input, Renderer, Vertical
 #include "ftxui/component/component_options.hpp"  // for InputOption
+#include "ftxui/component/mouse.hpp"  // for Mouse, Mouse::WheelDown, Mouse::WheelUp
 #include "ftxui/component/screen_interactive.hpp"  // for Component, ScreenInteractive
+#include "ftxui/dom/deprecated.hpp"                // for text
 #include "ftxui/dom/elements.hpp"  // for text, hbox, separator, Element, operator|, vbox, border
-#include "ftxui/util/ref.hpp"  // for Ref
+#include "ftxui/dom/node.hpp"         // for Node
+#include "ftxui/dom/requirement.hpp"  // for Requirement
+#include "ftxui/screen/box.hpp"       // for Box
+#include "ftxui/util/ref.hpp"         // for Ref
 #include "lib.h"
 #include "logging.h"
 #include "parser.h"
 
-void ui() {
+namespace ftxui {
+
+class ScrollerBase : public ComponentBase {
+   public:
+    ScrollerBase(Component child) {
+        Add(std::move(child));
+    }
+
+   private:
+    Element Render() final {
+        auto focused = Focused() ? focus : ftxui::select;
+        auto style   = Focused() ? inverted : nothing;
+
+        Element background = ComponentBase::Render();
+        background->ComputeRequirement();
+        size_ = background->requirement().min_y;
+        return dbox({
+                   std::move(background),
+                   vbox({
+                       text(L"") | size(HEIGHT, EQUAL, selected_),
+                       text(L"") | style | focused,
+                   }),
+               }) |
+               vscroll_indicator | yframe | yflex | reflect(box_);
+    }
+
+    bool OnEvent(Event event) final {
+        if (event.is_mouse() && box_.Contain(event.mouse().x, event.mouse().y))
+            TakeFocus();
+
+        int selected_old = selected_;
+        if (event == Event::ArrowUp || event == Event::Character('k') ||
+            (event.is_mouse() && event.mouse().button == Mouse::WheelUp)) {
+            selected_--;
+        }
+        if ((event == Event::ArrowDown || event == Event::Character('j') ||
+             (event.is_mouse() && event.mouse().button == Mouse::WheelDown))) {
+            selected_++;
+        }
+        if (event == Event::PageDown) selected_ += box_.y_max - box_.y_min;
+        if (event == Event::PageUp) selected_ -= box_.y_max - box_.y_min;
+        if (event == Event::Home) selected_ = 0;
+        if (event == Event::End) selected_ = size_;
+
+        selected_ = std::max(0, std::min(size_ - 1, selected_));
+        return selected_old != selected_;
+    }
+
+    bool Focusable() const final {
+        return true;
+    }
+
+    int selected_ = 0;
+    int size_     = 0;
+    Box box_;
+};
+
+Component Scroller(Component child) {
+    return Make<ScrollerBase>(std::move(child));
+}
+}  // namespace ftxui
+
+void ui(const std::string& fname) {
     using namespace ftxui;
 
     InputOption style = InputOption::Default();
     style.transform   = [](InputState state) {
-        // state.element |= borderEmpty;
-
         if (state.is_placeholder) {
             state.element |= dim;
         }
-
-        state.element |= bgcolor(Color::White);
-        state.element |= color(Color::Black);
 
         return state.element;
     };
 
     std::vector<Expr>       exprs;
     std::string             rawQuery;
+    std::string             lastNonEmptyQuery;
     std::deque<std::string> history;
-    Component               exprsInput = Input(&rawQuery, "Query:> ", style);
+    bool                    valid      = false;
+    Component               exprsInput = Input(&rawQuery, "", style);
 
     exprsInput |= CatchEvent([&](Event event) {
-        if (ftxui::Event::Character('\n') != event) {
+        json tag = {{"tag", "CatchEvent"}};
+        if (!event.is_character() && ftxui::Event::Character('\n') != event) {
+            Log::info("not a character event or [Enter]", tag);
             return false;
         }
-        if (auto parsed = parser::parseExprs(rawQuery)) {
-            exprs = std::move(*parsed);
-            history.push_back(rawQuery);
-            rawQuery.clear();
+        Log::info(
+            "char event",
+            Log::merge(
+                {{"char", event.character()}, {"rawQuery", rawQuery}}, tag
+            )
+        );
+        if (ftxui::Event::Character('\n') != event) {
+            rawQuery.push_back(event.character()[0]);
+            if (auto parsed = parser::parseExprs(rawQuery)) {
+                Log::info("Parse succeeded", tag);
+                if (runQuery(*parsed, fname).size() > 0) {
+                    Log::info("Query is non-empty", tag);
+                    valid             = true;
+                    exprs             = std::move(*parsed);
+                    lastNonEmptyQuery = rawQuery;
+                }
+            } else {
+                Log::info("Parse failed", tag);
+            }
+            rawQuery.pop_back();
+            return false;
         }
+        history.push_back(rawQuery);
+        rawQuery.clear();
+        Log::info("Character is [Enter]", tag);
         return true;
     });
-
-    // exprs_input |= CatchEvent([&](const Event& event) {
-    //     if (event.is_character()) {
-    //         if (auto parsed = parser::parseExprs(event.character())) {
-    //             exprs = *parsed;
-    //             return true;
-    //         }
-    //     }
-    //     return false;
-    // });
 
     // The component tree:
     auto component = Container::Vertical({
@@ -67,44 +146,37 @@ void ui() {
 
     // Tweak how the component tree is rendered:
     auto renderer = Renderer(component, [&] {
-        auto                 filteredJsonLines = runQuery(exprs, "dummy_log.json");
+        auto                 filteredJsonLines = runQuery(exprs, fname);
         auto                 formattedLines = formatResults(filteredJsonLines);
         std::vector<Element> lines;
         lines.reserve(formattedLines.size());
         for (const auto& line : formattedLines) {
             lines.push_back(text(line));
         }
-        std::ranges::reverse(lines);
+
+        auto lines_renderer =
+            Renderer([&] { return vbox(std::move(lines)) | yflex_grow; });
 
         return vbox({
-            vbox(std::move(lines)),
-            exprsInput->Render(),  //
-            text(rawQuery),        //
+            ftxui::Scroller(lines_renderer)->Render(),             //
+            filler(),                                              //
+            separator(),                                           //
+            hbox({text("Query   :> "), exprsInput->Render()}),     //
+            hbox({text("Current :> "), text(lastNonEmptyQuery)}),  //
         });
     });
 
-    auto screen = ScreenInteractive::TerminalOutput();
+    auto screen = ScreenInteractive::Fullscreen();
     screen.Loop(renderer);
 }
 
-int main() {
+int main(int argc, char** argv) {
     Log::init("log.json");
+    std::string fname = argc > 1 ? argv[1] : "dummy_log.json";
+
     Log::sendToCout = false;
 
     Log::info("Hello from Live Log Query (llq)!");
 
-    Log::info("hi", {{"tick", 2}});
-    Log::info("bye", {{"thing", {1, 2, 3}}});
-
-    ui();
-
-    // std::deque<std::string> rawQueries;
-    // while (true) {
-    //     std::string rawQuery;
-    //     fmt::print("> ");
-    //     std::getline(std::cin, rawQuery);
-    //     bool success = runQuery(rawQuery, "log.json");
-    //
-    //     rawQueries.push_back(std::move(rawQuery));
-    // }
+    ui(fname);
 }

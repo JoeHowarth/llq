@@ -59,10 +59,10 @@ std::string toStr(Level level) {
 
 // Logging(const std::string& filepath) : fp(filepath) {}
 
-void log(Level level, const std::string& msg, json arg) {
+void log(Level level, const std::string& msg, const json& arg) {
     json line = {{"level", toStr(level)}, {"msg", msg}};
 
-    for (auto& item : arg.items()) {
+    for (const auto& item : arg.items()) {
         line[item.key()] = item.value();
     }
     
@@ -74,12 +74,21 @@ void log(Level level, const std::string& msg, json arg) {
     }
 }
 
-void info(const std::string& msg, json arg) {
-    log(Level::Info, msg, std::move(arg));
+void info(const std::string& msg, const json& arg) {
+    log(Level::Info, msg, arg);
+}
+
+void info(const std::string& msg, const json&& arg) {
+    log(Level::Info, msg, arg);
 }
 
 void info(const std::string& msg) {
     log(Level::Info, msg, {});
+}
+
+json merge(json&& a, const json& b) {
+    a.update(b);
+   return std::move(a); 
 }
 
 }  // namespace Log

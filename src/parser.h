@@ -99,8 +99,8 @@ void toExpr(const Expression& parsed, Expr& ex) {
         ex.path.push_back(segment);
     }
 
-    ex.op = parsed.op;
-    if (parsed.rhs) {
+    if (parsed.op && parsed.rhs) {
+        ex.op = parsed.op;
         if (const auto* d = boost::get<double>(&*parsed.rhs)) {
             ex.rhs = Value(*d);
         } else if (const auto* s = boost::get<std::string>(&*parsed.rhs)) {

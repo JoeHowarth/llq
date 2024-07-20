@@ -10,7 +10,7 @@ int main() {
     while (true) {
         using namespace std::chrono_literals;
 
-        Log::info("In the loop babyyy", {{"count", count}});
+        Log::info("In the loop babyyy", json({{"count", count}}));
         if ((count % 2) == 0) {
             Log::info("Even", {{"count", count}, {"tag", "even"}});
         }
