@@ -37,3 +37,6 @@
 .DS_Store
 /build
 /.cache
+
+log.json
+dummy_log.json
