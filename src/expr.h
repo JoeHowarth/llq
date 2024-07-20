@@ -7,6 +7,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
 
 using json = nlohmann::ordered_json;
@@ -112,6 +113,12 @@ class Expr {
         fzf
     };
 
+    Expr() = default;
+    explicit Expr(json::json_pointer _path) : path(std::move(_path)) {}
+    explicit Expr(const std::string& _path) : path(_path) {}
+    Expr(json::json_pointer _path, Op _op, Value _rhs)
+        : path(std::move(_path)), op(_op), rhs(std::move(_rhs)) {}
+
     json::json_pointer   path;
     std::optional<Op>    op;
     std::optional<Value> rhs;
@@ -134,7 +141,7 @@ class Expr {
                 return "==";
             case Op::gt:
                 return ">";
-            case Op::in:
+           case Op::in:
                 return "in";
             case Op::fzf:
                 return "fzf";
@@ -153,6 +160,10 @@ class Expr {
             j["rhs"] = (rhs->to_string());
         }
         return j;
+    }
+      
+    bool operator==(const Expr& a) const {
+        return path == a.path && op == a.op && rhs == a.rhs;
     }
 };
 

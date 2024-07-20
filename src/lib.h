@@ -6,10 +6,12 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <iterator>
 #include <thread>
 
 #include "expr.h"
 #include "logging.h"
+#include "parser.h"
 
 namespace ranges = std::ranges;
 
@@ -186,7 +188,9 @@ json filterLine(json line, const std::vector<Expr>& terms) {
     json out;
     for (const Expr& expr : terms) {
         if (!line.contains(expr.path)) {
-            Log::info("[FilterLine]", {{"expr", expr.toJson()}});
+            Log::info(
+                "[FilterLine]", {{"expr", expr.toJson()}, {"line", line}}
+            );
             Log::info("[FilterLine] line does not contain expr, early return");
             return {};
         }
@@ -215,13 +219,32 @@ json filterLine(json line, const std::vector<Expr>& terms) {
     return out;
 }
 
-/*
-void runQuery(const std::string& rawQuery) {
-    // Parse raw query string into list of expressions
-    auto exprs = exprsFromQuery(rawQuery);
+std::vector<std::string> formatResults(const std::vector<json>& jsonLines) {
+    std::vector<std::string> output;
+    for (const auto& line : jsonLines) {
+        std::string text;
+        text.reserve(256);
+        auto inserter = std::back_inserter(text);
+        auto begin    = line.items().begin();
+        auto end      = line.items().end();
+        for (auto it = begin; it != end;) {
+            const auto& item = *it;
+            fmt::format_to(inserter, "{}: {}", item.key(), item.value().dump());
+            ++it;
+            if (it == end) {
+                break;
+            }
+            fmt::format_to(inserter, ",  ");
+        }
+        output.push_back(std::move(text));
+    }
+    return output;
+}
 
+std::vector<json>
+runQuery(const std::vector<Expr>& exprs, const std::string& logFilename) {
     // Open log file
-    std::ifstream logFile("log.json");
+    std::ifstream logFile(logFilename);
 
     // Read all lines from log file into vector.
     // Prevents infinite loop when this program produces logs to same file
@@ -233,16 +256,13 @@ void runQuery(const std::string& rawQuery) {
         lines.push_back(rawLine);
     }
 
+    std::vector<json> result;
     // filter and display lines
     for (const auto& line : lines) {
         json filtered = filterLine(json::parse(line), exprs);
         if (!filtered.is_null()) {
-            for (const auto& item : filtered.items()) {
-                fmt::print("{}: {},  ", item.key(), item.value().dump());
-            }
-            fmt::println("");
+            result.push_back(std::move(filtered));
         }
     }
-    fmt::println("");
+    return result;
 }
-*/

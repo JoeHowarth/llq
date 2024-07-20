@@ -23,9 +23,22 @@ add_executable(
     src/test_main.cpp 
     )
 
+add_executable(
+    logProducerBin
+    src/logProducerBin.cpp 
+    )
+
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(test_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+include(FetchContent)
+set(FETCHCONTENT_UPDATES_DISCONNECTED TRUE)
+FetchContent_Declare(ftxui
+  GIT_REPOSITORY https://github.com/ArthurSonzogni/ftxui
+  GIT_TAG main # Important: Specify a version or a commit hash here.
+)
+FetchContent_MakeAvailable(ftxui)
 
 # Find and link dependencies (example: fmt)
 find_package(fmt CONFIG REQUIRED)
@@ -35,12 +48,27 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         fmt::fmt
         nlohmann_json::nlohmann_json
+        ftxui::screen
+        ftxui::dom
+        ftxui::component
 )
 
 target_link_libraries(test_main
     PRIVATE
         fmt::fmt
         nlohmann_json::nlohmann_json
+        ftxui::screen
+        ftxui::dom
+        ftxui::component
+)
+
+target_link_libraries(logProducerBin
+    PRIVATE
+        fmt::fmt
+        nlohmann_json::nlohmann_json
+        ftxui::screen
+        ftxui::dom
+        ftxui::component
 )
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)

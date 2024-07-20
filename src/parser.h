@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fmt/core.h>
+#include <fmt/ranges.h>
 
 #include <boost/fusion/include/adapt_struct.hpp>
 #include <boost/spirit/home/x3.hpp>
@@ -57,8 +58,21 @@ auto const single_quoted_string_def = x3::lexeme
 
 BOOST_SPIRIT_DEFINE(single_quoted_string);
 
+x3::rule<class glob, std::string> glob     = "glob";
+auto const                        glob_def = x3::lexeme[+x3::char_('*')];
+BOOST_SPIRIT_DEFINE(glob);
+
+const auto f = [](auto& ctx) {
+    _val(ctx) = std::vector<std::string>{_attr(ctx)};
+};
+x3::rule<class glob2, std::vector<std::string>> glob2     = "glob2";
+auto const                                      glob2_def = glob[f];
+BOOST_SPIRIT_DEFINE(glob2);
+
 // Define the parser for the path
-auto const path = x3::lexeme[+x3::alpha % '.'];
+x3::rule<class path, std::vector<std::string>> path = "path";
+auto const path_def = x3::lexeme[(+x3::alpha % '.')];
+BOOST_SPIRIT_DEFINE(path);
 
 x3::rule<class rhs, std::optional<x3::variant<double, std::string>>> rhs =
     "rhs";
@@ -68,8 +82,8 @@ auto const rhs_def = x3::double_ | single_quoted_string;
 BOOST_SPIRIT_DEFINE(rhs);
 
 // Define the parser for the expression
-x3::rule<class expr, Expression> expr     = "expr";
-auto const                       expr_def = path >> -op_table >> -(rhs);
+x3::rule<class expr, Expression> expr = "expr";
+auto const expr_def                   = (path | glob2) >> -op_table >> -(rhs);
 BOOST_SPIRIT_DEFINE(expr);
 
 auto const exprs = expr % ',';
@@ -78,6 +92,9 @@ auto const exprs = expr % ',';
 using expr_type = Expression;
 
 void toExpr(const Expression& parsed, Expr& ex) {
+    if (parsed.path.size() == 1 && parsed.path[0] == "*") {
+        return;
+    }
     for (const auto& segment : parsed.path) {
         ex.path.push_back(segment);
     }

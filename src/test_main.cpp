@@ -1,3 +1,4 @@
+#include <fmt/core.h>
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <fmt/ranges.h>
 
@@ -165,6 +166,20 @@ TEST_CASE("Parse expression") {
 
         CHECK(expr == std::nullopt);
     }
+}
+
+TEST_CASE("Glob Expr *") {
+    fmt::println("");
+    fmt::println("Glob expr");
+    auto expr = parser::parseExpr("*");
+    REQUIRE(expr != std::nullopt);
+    fmt::println("Expr: {}", expr->toJson().dump());
+    fmt::println("");
+    CHECK(expr == Expr(""));
+
+    json line = {{"msg", "hi"}, {"level", 2}, {"foo", "bye"}};
+    auto out  = filterLine(line, {*expr});
+    CHECK(out == line);
 }
 
 TEST_CASE("Parse line into exprs") {
