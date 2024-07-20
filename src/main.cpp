@@ -86,6 +86,12 @@ Component Scroller(Component child) {
 }
 }  // namespace ftxui
 
+
+// TODO: 
+// - Make scrollable lines work
+// - More recent log appears at bottom
+// - Stream new changes to file 
+
 void ui(const std::string& fname) {
     using namespace ftxui;
 
