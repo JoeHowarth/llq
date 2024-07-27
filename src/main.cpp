@@ -13,6 +13,7 @@
 #include <ftxui/util/ref.hpp>      // for Ref
 #include <functional>              // for function
 #include <memory>                  // for allocator, __shared_ptr_access
+#include <ranges>
 #include <string>  // for char_traits, operator+, string, basic_string
 #include <thread>
 #include <utility>  // for move
@@ -27,8 +28,70 @@
 // - [ ] Stream new changes to file
 // - [ ] Fix lag
 
+struct Query {
+    std::string       str;
+    std::vector<Expr> exprs;
+};
+
+struct QueryResult {
+    std::string              str;
+    std::vector<json>        jsonLines;
+    std::vector<std::string> lines;
+};
+
+void queryService(
+    ftxui::ScreenInteractive& screen,
+    ftxui::Receiver<Query>    rcvr,
+    QueryResult&              queryResult,
+    const std::string&        fname
+) {
+    int maxMatches = -1;
+    // TODO: screen.dimy() is likely not thread safe to read AND not
+    // initialized correctly. This hack reads it from the main thread hopefully
+    // after initialization. Replace with a better solution
+    screen.Post([&maxMatches, &screen]() { maxMatches = screen.dimy() - 3; });
+    Query query;
+    while (rcvr->Receive(&query)) {
+        if (maxMatches == -1) {
+            // FIXME: if still not initialized, pray
+            maxMatches = screen.dimy() - 3;
+        }
+
+        std::vector<json> results =
+            runQuery(query.exprs, fname, maxMatches, 10000);
+        if (results.size() > 0) {
+            // guard against `query` variable being overwritten before task runs
+            // on ui thread
+            std::string queryStr = query.str;
+            auto        lines    = formatResults(results);
+            QueryResult toMove   = {
+                  .str       = query.str,
+                  .jsonLines = std::move(results),
+                  .lines     = std::move(lines),
+            };
+            screen.Post([&screen, &queryResult, moved = std::move(toMove),
+                         &maxMatches]() mutable {
+                queryResult = std::move(moved);
+                // update maxMatches to account for resizes
+                maxMatches = screen.dimy() - 3;
+
+                screen.PostEvent(ftxui::Event::Custom);
+            });
+        }
+    }
+}
+
 void ui(const std::string& fname) {
     using namespace ftxui;
+
+    auto                   screen = ScreenInteractive::Fullscreen();
+    std::string            rawQuery;
+    ftxui::Receiver<Query> rcvr        = MakeReceiver<Query>();
+    auto                   querySender = rcvr->MakeSender();
+    QueryResult            queryResult = {"", {}, {}};
+    std::thread            joinQueryService([&]() {
+        queryService(screen, std::move(rcvr), queryResult, fname);
+    });
 
     InputOption style = InputOption::Default();
     style.transform   = [](InputState state) {
@@ -38,15 +101,7 @@ void ui(const std::string& fname) {
 
         return state.element;
     };
-
-    std::vector<Expr>       exprs;
-    std::string             rawQuery;
-    std::string             lastNonEmptyQuery;
-    std::deque<std::string> history;
-    bool                    valid        = false;
-    Component               exprsInput   = Input(&rawQuery, "", style);
-    auto                    exprReceiver = MakeReceiver<std::vector<Expr>>();
-    auto                    exprSender   = exprReceiver->MakeSender();
+    Component exprsInput = Input(&rawQuery, "", style);
 
     exprsInput |= CatchEvent([&](Event event) {
         json tag = {{"tag", "CatchEvent"}};
@@ -64,19 +119,14 @@ void ui(const std::string& fname) {
             rawQuery.push_back(event.character()[0]);
             if (auto parsed = parser::parseExprs(rawQuery)) {
                 Log::info("Parse succeeded", tag);
-                if (runQuery(*parsed, fname, 1).size() > 0) {
-                    Log::info("Query is non-empty", tag);
-                    valid             = true;
-                    exprs             = std::move(*parsed);
-                    lastNonEmptyQuery = rawQuery;
-                }
+                // send query to QueryService
+                querySender->Send({.str = rawQuery, .exprs = *parsed});
             } else {
                 Log::info("Parse failed", tag);
             }
             rawQuery.pop_back();
             return false;
         }
-        history.push_back(rawQuery);
         rawQuery.clear();
         Log::info("Character is [Enter]", tag);
         return true;
@@ -87,26 +137,23 @@ void ui(const std::string& fname) {
         exprsInput,
     });
 
-    auto screen = ScreenInteractive::Fullscreen();
-
     // Tweak how the component tree is rendered:
     auto renderer = Renderer(component, [&] {
-        auto filteredJsonLines =
-            runQuery(exprs, fname, screen.dimy() - 3, 100000);
-        auto formattedLines = formatResults(filteredJsonLines);
-
         std::vector<Element> lines;
-        lines.reserve(formattedLines.size());
-        for (const auto& line : formattedLines) {
+        lines.reserve(queryResult.lines.size());
+        for (auto & line : std::ranges::reverse_view(queryResult.lines)) {
             lines.push_back(text(line));
         }
 
         return vbox({
-            vbox(std::move(lines)) | yflex_grow,                   //
-            filler(),                                              //
-            separator(),                                           //
-            hbox({text("Query   :> "), exprsInput->Render()}),     //
-            hbox({text("Current :> "), text(lastNonEmptyQuery)}),  //
+            vbox(std::move(lines)) | yflex_grow,                 //
+            filler(),                                            //
+            separator(),                                         //
+            hbox({text("Query   :> "), exprsInput->Render()}),   //
+            hbox({text("Current :> "), text(queryResult.str)}),  //
+
+            // hbox({text("Query   :> "), exprsInput->Render()}),  //
+            // text(fmt::format("{}", queryResult.lines.size()))
         });
     });
 
