@@ -12,6 +12,7 @@
 #include "expr.h"
 #include "logging.h"
 #include "parser.h"
+#include "read_file_backwards.h"
 
 namespace ranges = std::ranges;
 
@@ -241,28 +242,37 @@ std::vector<std::string> formatResults(const std::vector<json>& jsonLines) {
     return output;
 }
 
-std::vector<json>
-runQuery(const std::vector<Expr>& exprs, const std::string& logFilename) {
+std::vector<json> runQuery(
+    const std::vector<Expr>& exprs,
+    const std::string&       logFilename,
+    uint                     maxMatches = UINT_MAX,
+    uint                     maxLines   = UINT_MAX
+) {
     // Open log file
-    std::ifstream logFile(logFilename);
+    ReadFileBackwards revReader(logFilename);
 
     // Read all lines from log file into vector.
     // Prevents infinite loop when this program produces logs to same file
     // as it's reading from
     // TODO: Allow streaming approach with flag
-    std::vector<std::string> lines;
-    std::string              rawLine;
-    while (std::getline(logFile, rawLine)) {
-        lines.push_back(rawLine);
-    }
 
     std::vector<json> result;
-    // filter and display lines
-    for (const auto& line : lines) {
-        json filtered = filterLine(json::parse(line), exprs);
+    int               i = 0;
+    for (const auto& line : revReader) {
+        if (i >= maxLines || result.size() >= maxMatches) {
+            break;
+        }
+
+        json jsonLine =json::parse(line, nullptr, false);
+        if (jsonLine.is_discarded()) {
+            Log::info("Found discarded line while reading log file", {{"line", line}});
+            continue;
+        }
+        json filtered = filterLine(jsonLine, exprs);
         if (!filtered.is_null()) {
             result.push_back(std::move(filtered));
         }
+        ++i;
     }
     return result;
 }

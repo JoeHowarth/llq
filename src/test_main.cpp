@@ -5,6 +5,7 @@
 #include "doctest.h"
 #include "lib.h"
 #include "parser.h"
+#include "read_file_backwards.h"
 
 /*
 TEST_CASE("split") {
