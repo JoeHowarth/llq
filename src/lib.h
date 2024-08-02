@@ -11,7 +11,6 @@
 
 #include "expr.h"
 #include "logging.h"
-#include "parser.h"
 #include "read_file_backwards.h"
 
 namespace ranges = std::ranges;
@@ -83,103 +82,22 @@ json filterLine(
     return std::move(line);
 }
 
-// struct Expr {
-//     enum class Op {
-//         lt,
-//         eq,
-//         gt,
-//         in,
-//         fzf
-//     };
-//
-//     json::json_pointer  path;
-//     std::optional<Op>   op;
-//     std::optional<json> rhs;
-//
-//     explicit Expr(const std::string& str) {
-//         auto majorTerms = split(str, ' ', 2);
-//         std::erase_if(majorTerms, [](const std::string& s) {
-//             return s == " ";
-//         });
-//
-//         Log::info("Major Terms", {{"majorTerms", majorTerms}});
-//
-//         // parse path
-//         if (majorTerms[0] == "*") {
-//             path = json::json_pointer("/");
-//         } else {
-//             ranges::replace(majorTerms[0], '.', '/');
-//             path = json::json_pointer("/" + majorTerms[0]);
-//         }
-//
-//         if (majorTerms.size() == 1) {
-//             return;
-//         }
-//
-//         // parse op
-//         const std::string& opStr = majorTerms[1];
-//         if (opStr == "<") {
-//             op = Op::lt;
-//         } else if (opStr == "==") {
-//             op = Op::eq;
-//         } else if (opStr == ">") {
-//             op = Op::gt;
-//         } else {
-//             Log::info("Unknown op string", {{"opStr", opStr}});
-//         }
-//
-//         // parse rhs
-//         rhs = json::parse(majorTerms[2]);
-//     }
-//
-//     [[nodiscard]] json toJson() const {
-//         json j = {
-//             {"path", this->path.to_string()},
-//         };
-//
-//         if (op) {
-//             j["op"] = static_cast<int>(*this->op);
-//         };
-//         if (rhs) {
-//             j["rhs"] = (*this->rhs);
-//         }
-//         return j;
-//     }
-// };
-
-// std::vector<std::string> termsFromQuery(const std::string& query) {
-//     auto terms = split(query, ',');
-//     ranges::for_each(terms, trimInPlace);
-//     return terms;
-// }
-//
-// std::vector<Expr> exprsFromQuery(const std::string& query) {
-//     auto terms = termsFromQuery(query);
-//
-//     std::vector<Expr> exprs;
-//     exprs.reserve(terms.size());
-//     for (const auto& term : terms) {
-//         exprs.emplace_back(term);
-//     }
-//     return exprs;
-// }
-
 bool opMatches(const Value& val, const Value& rhs, const Expr::Op& op) {
     switch (op) {
         case Expr::Op::eq:
-            Log::info("[FilterLine]: op is eq");
+            // Log::info("[FilterLine]: op is eq");
             return val == rhs;
         case Expr::Op::lt:
-            Log::info("[FilterLine]: op is lt");
+            // Log::info("[FilterLine]: op is lt");
             return val < rhs;
         case Expr::Op::gt:
-            Log::info("[FilterLine]: op is gt");
+            // Log::info("[FilterLine]: op is gt");
             return val > rhs;
         case Expr::Op::in:
-            Log::info("[FilterLine]: op is in");
+            // Log::info("[FilterLine]: op is in");
             break;
         case Expr::Op::fzf:
-            Log::info("[FilterLine]: op is fzf");
+            // Log::info("[FilterLine]: op is fzf");
             break;
     }
     return true;
@@ -189,26 +107,28 @@ json filterLine(json line, const std::vector<Expr>& terms) {
     json out;
     for (const Expr& expr : terms) {
         if (!line.contains(expr.path)) {
-            Log::info(
-                "[FilterLine]", {{"expr", expr.toJson()}, {"line", line}}
-            );
-            Log::info("[FilterLine] line does not contain expr, early return");
+            // Log::info(
+            //     "[FilterLine]", {{"expr", expr.toJson()}, {"line", line}}
+            // );
+            // Log::info("[FilterLine] line does not contain expr, early
+            // return");
             return {};
         }
 
         json& json_at_path = line.at(expr.path);
-        Log::info(
-            "[FilterLine]", {{"expr", expr.toJson()}, {"atPath", json_at_path}}
-        );
+        // Log::info(
+        //     "[FilterLine]", {{"expr", expr.toJson()}, {"atPath",
+        //     json_at_path}}
+        // );
 
         if (expr.op) {
             assert(expr.rhs);
             std::optional<Value> val = Value::from_json(json_at_path);
             if (!val) {
-                Log::info(
-                    "Json at path is not a leaf Value",
-                    {{"json_at_path", json_at_path}}
-                );
+                // Log::info(
+                //     "Json at path is not a leaf Value",
+                //     {{"json_at_path", json_at_path}}
+                // );
                 return {};
             }
             if (!opMatches(*val, *expr.rhs, *expr.op)) {
@@ -263,9 +183,11 @@ std::vector<json> runQuery(
             break;
         }
 
-        json jsonLine =json::parse(line, nullptr, false);
+        json jsonLine = json::parse(line, nullptr, false);
         if (jsonLine.is_discarded()) {
-            Log::info("Found discarded line while reading log file", {{"line", line}});
+            Log::info(
+                "Found discarded line while reading log file", {{"line", line}}
+            );
             continue;
         }
         json filtered = filterLine(jsonLine, exprs);
