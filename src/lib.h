@@ -3,61 +3,14 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 
-#include <algorithm>
 #include <cctype>
-#include <chrono>
 #include <iterator>
-#include <thread>
 
 #include "expr.h"
 #include "logging.h"
 #include "read_file_backwards.h"
 
 namespace ranges = std::ranges;
-
-void sleep(int millis) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(millis));
-}
-
-void trimInPlace(std::string& str) {
-    // strangely std::isspace doesn't work directly
-    auto isspace = [](auto c) { return !std::isspace(c); };
-    auto b       = [&str]() { return str.begin(); };
-    auto e       = [&str]() { return str.end(); };
-
-    // erase from start to first space
-    str.erase(str.begin(), std::find_if(b(), e(), isspace));
-
-    // erase from end to last space
-    str.erase(
-        std::find_if(str.rbegin(), str.rend(), isspace).base(), str.end()
-    );
-}
-
-std::string trim(std::string str) {
-    trimInPlace(str);
-    return std::move(str);
-}
-
-std::vector<std::string>
-split(const std::string& str, char del, uint take = -1) {
-    if (str.size() == 0) {
-        return {};
-    }
-    std::vector<std::string> ret;
-    size_t                   start = 0;
-
-    for (int i = 0; i < take && start < str.length(); ++i) {
-        size_t ind = str.find(del, start);
-        if (ind == std::string::npos) {
-            break;
-        }
-        ret.emplace_back(str.substr(start, ind - start));
-        start = ind + 1;
-    }
-    ret.emplace_back(str.substr(start));
-    return ret;
-}
 
 bool matches(const std::string& key, const std::vector<std::string>& terms) {
     return terms.end() != ranges::find(terms, key);
@@ -106,7 +59,7 @@ bool opMatches(const Value& val, const Value& rhs, const Expr::Op& op) {
 json filterLine(json line, const std::vector<Expr>& terms) {
     json out;
     for (const Expr& expr : terms) {
-        if (!line.contains(expr.path)) {
+        if (!line.contains(expr.path.ptr)) {
             // Log::info(
             //     "[FilterLine]", {{"expr", expr.toJson()}, {"line", line}}
             // );
@@ -115,7 +68,7 @@ json filterLine(json line, const std::vector<Expr>& terms) {
             return {};
         }
 
-        json& json_at_path = line.at(expr.path);
+        json& json_at_path = line.at(expr.path.ptr);
         // Log::info(
         //     "[FilterLine]", {{"expr", expr.toJson()}, {"atPath",
         //     json_at_path}}
@@ -135,29 +88,33 @@ json filterLine(json line, const std::vector<Expr>& terms) {
                 return {};
             }
         }
-        out[expr.path] = line[expr.path];
+        out[expr.path.ptr] = line[expr.path.ptr];
     }
     return out;
+}
+std::string formatResult(const json& line) {
+    std::string text;
+    text.reserve(256);
+    auto inserter = std::back_inserter(text);
+    auto begin    = line.items().begin();
+    auto end      = line.items().end();
+    for (auto it = begin; it != end;) {
+        const auto& item = *it;
+        fmt::format_to(inserter, "{}: {}", item.key(), item.value().dump());
+        ++it;
+        if (it == end) {
+            break;
+        }
+        fmt::format_to(inserter, ",  ");
+    }
+    return std::move(text);
 }
 
 std::vector<std::string> formatResults(const std::vector<json>& jsonLines) {
     std::vector<std::string> output;
+    output.reserve(jsonLines.size());
     for (const auto& line : jsonLines) {
-        std::string text;
-        text.reserve(256);
-        auto inserter = std::back_inserter(text);
-        auto begin    = line.items().begin();
-        auto end      = line.items().end();
-        for (auto it = begin; it != end;) {
-            const auto& item = *it;
-            fmt::format_to(inserter, "{}: {}", item.key(), item.value().dump());
-            ++it;
-            if (it == end) {
-                break;
-            }
-            fmt::format_to(inserter, ",  ");
-        }
-        output.push_back(std::move(text));
+        output.push_back(std::move(formatResult(line)));
     }
     return output;
 }

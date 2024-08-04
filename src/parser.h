@@ -92,12 +92,7 @@ auto const exprs = expr % ',';
 using expr_type = Expression;
 
 void toExpr(const Expression& parsed, Expr& ex) {
-    if (parsed.path.size() == 1 && parsed.path[0] == "*") {
-        return;
-    }
-    for (const auto& segment : parsed.path) {
-        ex.path.push_back(segment);
-    }
+    ex.path = std::move(Path(parsed.path));
 
     if (parsed.op && parsed.rhs) {
         ex.op = parsed.op;

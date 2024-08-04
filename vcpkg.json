@@ -5,6 +5,8 @@
     "fmt",
     "nlohmann-json",
     "boost-fusion",
-    "boost-spirit"
+    "boost-spirit",
+    "boost-dynamic-bitset",
+    "folly"
   ]
 }

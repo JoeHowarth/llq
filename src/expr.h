@@ -10,6 +10,8 @@
 #include <utility>
 #include <variant>
 
+#include "string_utils.h"
+
 using json = nlohmann::ordered_json;
 
 struct Value {
@@ -103,6 +105,50 @@ struct Value {
     std::variant<std::string, double> v;
 };
 
+struct Path {
+    json::json_pointer ptr{""};
+    std::size_t        frontHash{};
+    bool               isWildCard = false;
+
+    Path() = default;
+
+    explicit Path(const std::string& str) {
+        if (str.size() == 1 && str[0] == '*') {
+            isWildCard = true;
+            return;
+        }
+
+        make(split(str, '/'));
+    }
+
+    explicit Path(const std::vector<std::string>& segments) {
+        if (segments.size() == 1 && segments[0][0] == '*') {
+            isWildCard = true;
+            return;
+        }
+        make(segments);
+    }
+
+    bool operator==(const Path& other) const {
+        if (this->frontHash != other.frontHash) {
+            return false;
+        }
+        return this->ptr == other.ptr;
+    }
+
+    [[nodiscard]] std::string to_string() const {
+        return ptr.to_string();
+    }
+
+   private:
+    void make(const std::vector<std::string>& segments) {
+        for (const auto& seg : segments) {
+            ptr.push_back(seg);
+        }
+        frontHash = std::hash<std::string>()(segments.front());
+    }
+};
+
 class Expr {
    public:
     enum class Op {
@@ -113,27 +159,70 @@ class Expr {
         fzf
     };
 
-    Expr() = default;
-    explicit Expr(json::json_pointer _path) : path(std::move(_path)) {}
-    explicit Expr(const std::string& _path) : path(_path) {}
-    Expr(json::json_pointer _path, Op _op, Value _rhs)
-        : path(std::move(_path)), op(_op), rhs(std::move(_rhs)) {}
-
-    json::json_pointer   path;
+    Path path;
+    // TODO: combine Op and Value under single optional to prevent malformed
+    // instance by construction
     std::optional<Op>    op;
     std::optional<Value> rhs;
 
+    Expr() = default;
+    explicit Expr(Path&& _path) : path(std::move(_path)) {}
+    explicit Expr(Path _path) : path(std::move(_path)) {}
+    explicit Expr(std::vector<std::string>& _path) : path(_path) {}
+    explicit Expr(const std::string& _path) : path(_path) {}
+    Expr(Path _path, Op _op, Value _rhs)
+        : path(std::move(_path)), op(_op), rhs(std::move(_rhs)) {}
+
     [[nodiscard]] std::string to_string() const {
-        std::string s = path.to_string();
         if (op) {
             return fmt::format(
                 "{} {} {}", path.to_string(), op_str(*op), rhs->to_string()
             );
         }
-        return s;
+        return path.to_string();
+    }
+
+    [[nodiscard]] bool matches(const json& line) const {
+        if (!line.contains(path.ptr)) {
+            return false;
+        }
+        return opMatches(line);
+    }
+
+    [[nodiscard]] bool opMatches(const json& line) const {
+        if (!op) {
+            // trivially true
+            return true;
+        }
+        // rhs better be there if op is
+        assert(rhs);
+        auto val = Value::from_json(line.at(path.ptr));
+        if (!val) {
+            return false;
+        }
+
+        switch (*op) {
+            case Expr::Op::eq:
+                // Log::info("[FilterLine]: op is eq");
+                return val == rhs;
+            case Expr::Op::lt:
+                // Log::info("[FilterLine]: op is lt");
+                return val < rhs;
+            case Expr::Op::gt:
+                // Log::info("[FilterLine]: op is gt");
+                return val > rhs;
+            case Expr::Op::in:
+                // Log::info("[FilterLine]: op is in");
+                return false;
+            case Expr::Op::fzf:
+                // Log::info("[FilterLine]: op is fzf");
+                return false;
+        }
     }
 
     static std::string op_str(Op op) {
+        std::hash<std::string>()("hi");
+
         switch (op) {
             case Op::lt:
                 return "<";
@@ -141,7 +230,7 @@ class Expr {
                 return "==";
             case Op::gt:
                 return ">";
-           case Op::in:
+            case Op::in:
                 return "in";
             case Op::fzf:
                 return "fzf";
@@ -161,7 +250,7 @@ class Expr {
         }
         return j;
     }
-      
+
     bool operator==(const Expr& a) const {
         return path == a.path && op == a.op && rhs == a.rhs;
     }

@@ -8,12 +8,13 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 IF( NOT CMAKE_BUILD_TYPE )
-    # set(CMAKE_BUILD_TYPE Debug)
-   set( CMAKE_BUILD_TYPE Release )
+    set(CMAKE_BUILD_TYPE Debug)
+   # set( CMAKE_BUILD_TYPE Release )
 ENDIF()
 
 # Enable vcpkg integration
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+
 
 # Add source files
 add_executable(
@@ -46,6 +47,8 @@ FetchContent_MakeAvailable(ftxui)
 # Find and link dependencies (example: fmt)
 find_package(fmt CONFIG REQUIRED)
 find_package(nlohmann_json 3.2.0 REQUIRED)
+find_package(folly REQUIRED)
+
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
@@ -54,6 +57,7 @@ target_link_libraries(${PROJECT_NAME}
         ftxui::screen
         ftxui::dom
         ftxui::component
+        Folly::folly
 )
 
 target_link_libraries(test_main
@@ -63,6 +67,7 @@ target_link_libraries(test_main
         ftxui::screen
         ftxui::dom
         ftxui::component
+        Folly::folly
 )
 
 target_link_libraries(logProducerBin
@@ -72,6 +77,7 @@ target_link_libraries(logProducerBin
         ftxui::screen
         ftxui::dom
         ftxui::component
+        Folly::folly
 )
 
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
