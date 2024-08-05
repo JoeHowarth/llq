@@ -1,6 +1,7 @@
 # llq (Live Log Query)
 
 llq enables responsively quering your structured json logs to understand your application
+![llq-demo-1](https://github.com/user-attachments/assets/104d0901-4416-4a00-a41d-5bc3c31ca229)
 
 
 ## Query Syntax
@@ -51,7 +52,6 @@ _log.json_
 
 
 ```json
-
 ────────────────────────────────────────────────────────────────────
 Query      :> 
 Displaying :> 
