@@ -45,15 +45,19 @@ struct Query {
     std::vector<Expr> exprs;
     int               maxMatches = 1000;
 
-    static std::optional<Query> parse(std::string _str) {
-        std::optional<std::vector<Expr>> exprs = parser::parseExprs(_str);
+    static std::optional<Query>
+    parse(std::string str, long seq = 0, int maxMatches = 1000) {
+        std::optional<std::vector<Expr>> exprs = parser::parseExprs(str);
         if (!exprs) {
             return std::nullopt;
         }
-        return Query(0, std::move(_str), std::move(*exprs), 1000);
+        return Query(seq, std::move(str), std::move(*exprs), maxMatches);
     }
 
-    Query() = default;
+    Query()                        = default;
+    Query(const Query&)            = delete;
+    Query& operator=(const Query&) = delete;
+    
     // Query(long _seq, std::string&& _str, std::vector<Expr>&& _exprs)
     //     : seq(_seq), str(_str), exprs(_exprs) {}
     Query(
@@ -81,9 +85,15 @@ struct Query {
         }
         return *this;
     }
+
+    [[nodiscard]] Query clone() const {
+        return Query{seq, str, exprs, maxMatches};
+    }
 };
 
-using Msg = std::variant<Index, Query>;
+struct StopSignal {};
+
+using Msg = std::variant<Index, Query, StopSignal>;
 
 struct QueryResult {
     Query query;

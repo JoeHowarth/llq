@@ -23,20 +23,89 @@
 #include "parser.h"
 #include "types.h"
 
+void ui(
+    ftxui::ScreenInteractive&         screen,
+    folly::MPMCQueue<Msg>&            queryService,
+    folly::Synchronized<QueryResult>& queryResult
+) {
+    using namespace ftxui;
+
+    std::string rawQuery;
+    long        seq = 0;
+
+    auto tryParseAndEvaluate = [&](std::string&& qs) {
+        int maxMatches = screen.dimy() - 3;
+        if (auto query = Query::parse(qs, seq++, maxMatches)) {
+            queryService.blockingWrite(std::move(*query));
+        }
+    };
+
+    InputOption style = InputOption::Default();
+    style.transform   = [](InputState state) {
+        if (state.is_placeholder) {
+            state.element |= dim;
+        }
+
+        return state.element;
+    };
+    Component exprsInput = Input(&rawQuery, "", style);
+
+    exprsInput |= CatchEvent([&](Event event) {
+        if (event == ftxui::Event::Return) {
+            tryParseAndEvaluate(std::move(rawQuery));
+            rawQuery.clear();
+
+            // mark event as handled to prevent default handlers running
+            return true;
+        }
+        if (!event.is_character()) {
+            return false;
+        }
+
+        // must append event's char bc before default handler add's it
+        tryParseAndEvaluate(rawQuery + event.character().front());
+        return false;
+    });
+
+    // The component tree:
+    auto component = Container::Vertical({
+        exprsInput,
+    });
+
+    // Tweak how the component tree is rendered:
+    auto renderer = Renderer(component, [&] {
+        std::vector<Element> lines;
+        Element              displayedQueryStr;
+        {
+            auto qr = queryResult.rlock();
+            lines.reserve(qr->lines.size());
+            for (const auto& line : std::ranges::reverse_view(qr->lines)) {
+                lines.push_back(std::move(text(line)));
+            }
+            displayedQueryStr = text(qr->query.str);
+        }
+
+        return vbox({
+            vbox(std::move(lines)) | yflex_grow,                   //
+            filler(),                                              //
+            separator(),                                           //
+            hbox({text("Query      :> "), exprsInput->Render()}),  //
+            hbox({text("Displaying :> "), displayedQueryStr}),     //
+        });
+    });
+
+    screen.Loop(renderer);
+}
+
+/*
 std::function<void()>
-ui(folly::MPMCQueue<Msg>&            queryService,
+ui(ftxui::ScreenInteractive&         screen,
+   folly::MPMCQueue<Msg>&            queryService,
    folly::Synchronized<QueryResult>& queryResult) {
     using namespace ftxui;
 
-    auto screen = ScreenInteractive::Fullscreen();
-    auto threadSafeReRender = [&screen]() {
-        screen.Post([&screen]() { screen.PostEvent(ftxui::Event::Custom); });
-    };
-    return threadSafeReRender;
-    /*
-    std::string            rawQuery;
-    ftxui::Receiver<Query> rcvr = MakeReceiver<Query>();
-    long                   seq  = 0;
+    std::string rawQuery;
+    long        seq = 0;
 
     InputOption style = InputOption::Default();
     style.transform   = [](InputState state) {
@@ -114,5 +183,5 @@ ui(folly::MPMCQueue<Msg>&            queryService,
     });
 
     screen.Loop(renderer);
-    */
 }
+*/

@@ -1,3 +1,4 @@
+#include <atomic>
 #define DOCTEST_CONFIG_DISABLE
 #define GLOG_NO_ABBREVIATED_SEVERITIES
 #include <doctest.h>
@@ -10,9 +11,7 @@
 #include <thread>
 
 #include "ingestor.h"
-#include "lib.h"
 #include "logging.h"
-#include "parser.h"
 #include "query_service.h"
 #include "ui.h"
 
@@ -66,7 +65,6 @@
 
 // TODO:
 // - [ ] Make scrollable lines work
-// - [X] More recent log appears at bottom
 // - [ ] Stream new changes to file
 // - [ ] Fix lag
 
@@ -78,14 +76,41 @@ int main(int argc, char** argv) {
     Log::sendToCout = false;
     Log::info("Hello from Live Log Query (llq)!");
 
-    std::string fname = argc > 1 ? argv[1] : "dummy_log.json";
+    auto info = [tag = json{{"tag", "Main"}}](const std::string&& s) {
+        Log::info(s, tag);
+    };
 
+    // TODO: think about correct number here
+    folly::MPMCQueue<Msg> channel(100);
+
+    // spawn ingestor to listen to log file
+    std::atomic<bool> shouldShutdown(false);
+    std::string       fname = argc > 1 ? argv[1] : "dummy_log.json";
+    std::ifstream     file(fname, std::ifstream::in);
+    std::thread       ingestor = spawnIngestor(channel, file, shouldShutdown);
+
+    // create onResult callback to re-render ftxui after successful query
+    // evaluation
+    auto                  screen = ftxui::ScreenInteractive::Fullscreen();
+    std::function<void()> threadSafeReRender = [&screen]() {
+        screen.Post([&screen]() { screen.PostEvent(ftxui::Event::Custom); });
+    };
+
+    // spawn query service
     folly::Synchronized<QueryResult> queryResult;
-    folly::MPMCQueue<Msg>            channel;
+    std::thread                      queryService =
+        spawnQueryService(channel, queryResult, threadSafeReRender);
 
-    std::ifstream file(fname, std::ifstream::in);
+    // run ui
+    ui(screen, channel, queryResult);
 
-    startIngesting(channel, file);
-    auto onUpdate = ui(channel, queryResult);
-    startQueryService(channel, queryResult, onUpdate);
+    // shutdown
+    {
+        info("Shutting down workers...");
+        shouldShutdown.store(true);
+        channel.blockingWrite(StopSignal{});
+        ingestor.join();
+        queryService.join();
+        info("Workers shutdown");
+    }
 }

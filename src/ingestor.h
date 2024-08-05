@@ -6,7 +6,6 @@
 #include <unordered_map>
 
 #include "bitset.h"
-#include "lib.h"
 #include "types.h"
 
 void updateIndex(Index& index, json&& obj) {
@@ -16,20 +15,41 @@ void updateIndex(Index& index, json&& obj) {
         const auto& key  = it.key();
         std::size_t hash = keyHash(key);
         index.bitsets[hash].set(lineNum, true);
-        fmt::println("key {}, hash {}, bs {}", key, hash, index.bitsets[hash]);
+        // fmt::println("key {}, hash {}, bs {}", key, hash,
+        // index.bitsets[hash]);
     }
     index.lines.push_back(std::move(obj));
 }
 
 // call like: std::thread producerThread(startIngesting, std::ref(queue),
 // std::ref(iFileStream));
-void startIngesting(folly::MPMCQueue<Msg>& sender, std::istream& file) {
+void startIngesting(
+    folly::MPMCQueue<Msg>& sender,
+    std::istream&          file,
+    std::atomic<bool>&     shouldShutdown
+) {
     Index          index;
     std::string    line;
     std::streampos lastPosition;
     std::size_t    lastLineNumberSent;
 
-    auto resetAndSend = [&]() {
+    while (!shouldShutdown.load()) {
+        lastPosition = file.tellg();
+
+        while (std::getline(file, line)) {
+            if (file.eof()) {
+                break;
+            }
+
+            try {
+                updateIndex(index, json::parse(line, nullptr, false));
+            } catch (const json::parse_error& e) {
+                fmt::println("Failed to parse line: {}", e.what());
+                break;
+            }
+            lastPosition = file.tellg();
+        }
+
         // send index if it's non-empty
         if (index.lines.size() > 0) {
             if (index.start_idx > lastLineNumberSent + 1) {
@@ -50,24 +70,14 @@ void startIngesting(folly::MPMCQueue<Msg>& sender, std::istream& file) {
         file.clear();              // Clear the EOF flag
         file.seekg(lastPosition);  // Reset cursor to the last position
         // Wait before checking again
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    };
-
-    while (true) {
-        lastPosition = file.tellg();
-        std::getline(file, line);
-        if (file.eof()) {
-            resetAndSend();
-            continue;  // Check again for new data
-        }
-
-        // Parse the JSON line
-        nlohmann::json jsonObject = nlohmann::json::parse(line);
-        if (jsonObject.is_discarded()) {
-            resetAndSend();
-            continue;
-        }
-
-        updateIndex(index, jsonObject);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+}
+
+std::thread spawnIngestor(
+    folly::MPMCQueue<Msg>& sender,
+    std::istream&          file,
+    std::atomic<bool>&     shouldShutdown
+) {
+    return std::thread([&]() { startIngesting(sender, file, shouldShutdown); });
 }

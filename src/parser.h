@@ -8,17 +8,12 @@
 #include <boost/spirit/home/x3/core/parse.hpp>
 #include <boost/spirit/home/x3/numeric/real.hpp>
 #include <boost/spirit/home/x3/support/ast/variant.hpp>
-#include <iostream>
-#include <nlohmann/json.hpp>
 #include <optional>
-#include <stdexcept>
 #include <string>
-#include <variant>
 
 #include "expr.h"
 
 namespace x3    = boost::spirit::x3;
-namespace ascii = boost::spirit::x3::ascii;
 
 namespace parser {
 
