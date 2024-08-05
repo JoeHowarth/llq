@@ -3,7 +3,6 @@
 llq enables responsively quering your structured json logs to understand your application
 
 <img src="https://github.com/user-attachments/assets/9e329a79-e398-4aac-abcf-236b93abce61" width="50%">
-![out](https://github.com/user-attachments/assets/9e329a79-e398-4aac-abcf-236b93abce61 )
 
 ## Query Syntax
 
