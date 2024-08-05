@@ -1,13 +1,12 @@
 #pragma once
 
-#include <fmt/core.h>
 #include <folly/MPMCQueue.h>
 
 #include <stdexcept>
 #include <unordered_map>
 
-#include "bitset.h"
-#include "logging.h"
+#include "utils/bitset.h"
+#include "utils/logging.h"
 #include "types.h"
 
 void updateIndex(Index& index, json&& obj) {

@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "bitset.h"
+#include "utils/bitset.h"
 #include "expr.h"
 #include "parser.h"
 

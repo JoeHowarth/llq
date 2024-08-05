@@ -29,7 +29,7 @@ add_executable(
 
 add_executable(
     logProducerBin
-    src/logProducerBin.cpp 
+    src/utils/logProducerBin.cpp 
     )
 
 # Include directories

@@ -9,7 +9,7 @@
 #include <stdexcept>
 
 #include "types.h"
-#include "logging.h"
+#include "utils/logging.h"
 
 // helper type for the visitor
 template <class... Ts>

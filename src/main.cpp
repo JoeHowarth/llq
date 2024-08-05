@@ -11,7 +11,7 @@
 #include <thread>
 
 #include "ingestor.h"
-#include "logging.h"
+#include "utils/logging.h"
 #include "query_service.h"
 #include "ui.h"
 

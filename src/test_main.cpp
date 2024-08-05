@@ -13,10 +13,8 @@
 #include <stdexcept>
 #include <thread>
 
-#include "bitset.h"
 #include "ingestor.h"
-#include "logging.h"
-#include "parser.h"
+#include "utils/logging.h"
 #include "query_service.h"
 #include "types.h"
 
