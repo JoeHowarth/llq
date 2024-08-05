@@ -24,35 +24,3 @@ count < 5
 name > 'a'
 *             # a wildcard is a special type of path specifier that matches all paths
 ```
-
-## Example:
-
-_log.json_
-```json
-{"level":"info","msg":"First log"}
-{"level":"info","msg":"In the loop babyyy","count":5}
-{"level":"info","msg":"Multiple of 5","count":5,"tag":"five"}
-{"level":"info","msg":"Using some strings too","name":"Bobby 5"}
-{"level":"info","msg":"In the loop babyyy","count":6}
-{"level":"info","msg":"Even","count":6,"tag":"even"}
-{"level":"info","msg":"Multiple of three","count":6,"tag":"three"}
-{"level":"info","msg":"Using some strings too","name":"Bobby 6"}
-{"level":"info","msg":"In the loop babyyy","count":7}
-{"level":"info","msg":"Multiple of 7","count":7,"tag":"7"}
-{"level":"info","msg":"Using some strings too","name":"Bobby 7"}
-{"level":"info","msg":"In the loop babyyy","count":8}
-{"level":"info","msg":"Even","count":8,"tag":"even"}
-{"level":"info","msg":"Using some strings too","name":"Bobby 8"}
-```
-
-```sh
-> llq log.json
-```
-
-
-
-```json
-────────────────────────────────────────────────────────────────────
-Query      :> 
-Displaying :> 
-```
