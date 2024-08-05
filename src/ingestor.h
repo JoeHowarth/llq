@@ -1,11 +1,13 @@
 #pragma once
 
+#include <fmt/core.h>
 #include <folly/MPMCQueue.h>
 
 #include <stdexcept>
 #include <unordered_map>
 
 #include "bitset.h"
+#include "logging.h"
 #include "types.h"
 
 void updateIndex(Index& index, json&& obj) {
@@ -15,8 +17,6 @@ void updateIndex(Index& index, json&& obj) {
         const auto& key  = it.key();
         std::size_t hash = keyHash(key);
         index.bitsets[hash].set(lineNum, true);
-        // fmt::println("key {}, hash {}, bs {}", key, hash,
-        // index.bitsets[hash]);
     }
     index.lines.push_back(std::move(obj));
 }
@@ -44,7 +44,10 @@ void startIngesting(
             try {
                 updateIndex(index, json::parse(line, nullptr, false));
             } catch (const json::parse_error& e) {
-                fmt::println("Failed to parse line: {}", e.what());
+                Log::info(
+                    "Failed to parse line",
+                    {{"error", e.what()}, {"tag", "Ingestor"}}
+                );
                 break;
             }
             lastPosition = file.tellg();

@@ -21,9 +21,15 @@ enum class Level {
 
 std::ofstream fp;
 bool          sendToCout = true;
+bool          disabled   = true;
+
+void disable() {
+    disabled = true;
+}
 
 void init(const std::string& filepath) {
-    fp = std::ofstream(filepath);
+    disabled = false;
+    fp       = std::ofstream(filepath);
 }
 
 void toStr(Level level, std::string& str) {
@@ -60,12 +66,15 @@ std::string toStr(Level level) {
 // Logging(const std::string& filepath) : fp(filepath) {}
 
 void log(Level level, const std::string& msg, const json& arg) {
+    if (disabled) {
+        return;
+    }
     json line = {{"level", toStr(level)}, {"msg", msg}};
 
     for (const auto& item : arg.items()) {
         line[item.key()] = item.value();
     }
-    
+
     std::string s = line.dump();
     fp << s << std::endl;
     fp.flush();
@@ -88,7 +97,7 @@ void info(const std::string& msg) {
 
 json merge(json&& a, const json& b) {
     a.update(b);
-   return std::move(a); 
+    return std::move(a);
 }
 
 }  // namespace Log

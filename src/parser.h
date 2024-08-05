@@ -1,8 +1,5 @@
 #pragma once
 
-#include <fmt/core.h>
-#include <fmt/ranges.h>
-
 #include <boost/fusion/include/adapt_struct.hpp>
 #include <boost/spirit/home/x3.hpp>
 #include <boost/spirit/home/x3/core/parse.hpp>
@@ -13,7 +10,7 @@
 
 #include "expr.h"
 
-namespace x3    = boost::spirit::x3;
+namespace x3 = boost::spirit::x3;
 
 namespace parser {
 

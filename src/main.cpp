@@ -1,4 +1,3 @@
-#include <atomic>
 #define DOCTEST_CONFIG_DISABLE
 #define GLOG_NO_ABBREVIATED_SEVERITIES
 #include <doctest.h>
@@ -6,8 +5,9 @@
 #include <folly/MPMCQueue.h>
 #include <folly/Synchronized.h>
 
+#include <atomic>
 #include <fstream>
-#include <string>  // for char_traits, operator+, string, basic_string
+#include <string>
 #include <thread>
 
 #include "ingestor.h"
@@ -16,66 +16,61 @@
 #include "ui.h"
 
 /*
- * main -> glue code
- *
- * ingestor -> file reading, Index creation
- * query_service -> query service,
- * types -> Index, Query, QueryResult, Msg defintions
- * ui -> ftxui
- * parser -> parsing
- * logging -> logging
- *
- */
-
-/*
  * Index: structure containing
  * - start_idx: int // the line number from the log file this index begins with;
  * used for partial indexes
  * - lines: Vec<json>
- * - bitsets: HashMap<json_pointer, Bitset>
+ * - bitsets: HashMap<"Hash of first key in json pointer", Bitset>
  * - Merge function updates first Index to include 2nd Index,
  *     Note: start_idx + lines.size() ranges must be overlapping or adjacent so
- * final range is contiguous
+ *     final range is contiguous
  *
  * Ingestor: Continuously reads lines from file.
  * When it finds a new line:
  * - parse line into json
- * - update bitset for each key in line
- * - push json line into vec of lines
+ * - Update Index:
+ *   - update bitset for each key in line
+ *   - push json line into vec of lines
+ * - When no more lines left to read, send partial Index through output channel
+ * (to QueryService)
+ * - Sleep then check for more lines in file
  *
- *
- * QueryService: Takes list of Expr and finds set of lines that matches
- * - Maintains Index
+ * QueryService: Responsible for maaintaining full Index and running queries
+ * against it
  * - Reads from in-channel either Query or Index msgs
- *   - On Index: merge incoming w/ master index
+ *   - On Index: merge incoming w/ master index, then re-run last query with new
+ * Index
  *   - On Query: run query on master index
  *     - && together bitsets for all paths in query to make a single bitset
- * filter
+ *       filter
  *     - Iterate `lines` and apply any filter ops from query, then format output
- * and return
+ *     - Update QueryResult shared state, call onResult cb to trigger ftxui
+ * re-render
  *
  * UI Thread:
- * - If input parses, send to query service along with callback to run on
- * completion
- * - Callback schedules task on UI thread which updates local variables and
- * posts a custom event to cause re-render
- *
- *
+ * - If input parses, send to query service
+ * - On render, read from shared QueryResult to populate ui
+ * - If Query is invalid or returns empty result, continue showing last
+ * non-empty query
  */
 
-// TODO:
-// - [ ] Make scrollable lines work
-// - [ ] Stream new changes to file
-// - [ ] Fix lag
-
-// TODO: Build in-memory file repr that is fast to search
-// -
+// TODO: scrollable results
 
 int main(int argc, char** argv) {
-    Log::init("log.json");
-    Log::sendToCout = false;
+    if (argc < 2) {
+        fmt::println(
+            "LLQ (Live Log Query)\nInvalid usage, must specify a log file\n\nExample :> llq log.json"
+        );
+        exit(1);
+    }
+    std::string fname = argv[1];
+
+    Log::disable();
+    // Log::init("log.json");
+    // Log::sendToCout = false;
     Log::info("Hello from Live Log Query (llq)!");
 
+    // TODO: Generalize this tagged logger in `logging.h`
     auto info = [tag = json{{"tag", "Main"}}](const std::string&& s) {
         Log::info(s, tag);
     };
@@ -85,7 +80,6 @@ int main(int argc, char** argv) {
 
     // spawn ingestor to listen to log file
     std::atomic<bool> shouldShutdown(false);
-    std::string       fname = argc > 1 ? argv[1] : "dummy_log.json";
     std::ifstream     file(fname, std::ifstream::in);
     std::thread       ingestor = spawnIngestor(channel, file, shouldShutdown);
 

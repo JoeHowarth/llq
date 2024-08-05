@@ -65,16 +65,9 @@ class BitSet {
     }
 
     BitSet& operator&=(const BitSet& other) {
-        // fmt::println(
-        //     "this, size: {}, capacity: {}", this->size(), this->capacity()
-        //);
-        // fmt::println(
-        //     "other, size: {}, capacity: {}", other.size(), other.capacity()
-        //);
         this->m_size = std::min(this->m_size, other.m_size);
         this->bitset_.resize(other.capacity());
         this->bitset_ &= other.bitset_;
-        // fmt::println("after");
         return *this;
     }
 
@@ -238,15 +231,6 @@ TEST_CASE("BitSet operations") {
 
     CHECK(bitset1.size() == 4);
     CHECK(bitset2.size() == 4);
-
-    // fmt::println(
-    //     "bitset1 {}, size: {}, capacity: {}", bitset1, bitset1.size(),
-    //     bitset1.capacity()
-    //);
-    // fmt::println(
-    //     "bitset2 {}, size: {}, capacity: {}", bitset2, bitset2.size(),
-    //     bitset2.capacity()
-    //);
 
     // Perform bitwise operations
     BitSet andResult = bitset1 & bitset2;

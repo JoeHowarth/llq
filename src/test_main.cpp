@@ -7,23 +7,19 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdio>
+#include <filesystem>
 #include <cstdlib>
 #include <optional>
-#include <queue>
-#include <ranges>
 #include <stdexcept>
 #include <thread>
 
 #include "bitset.h"
 #include "ingestor.h"
+#include "logging.h"
 #include "parser.h"
 #include "query_service.h"
-#include "read_file_backwards.h"
 #include "types.h"
-#include "logging.h"
 
-/*
 TEST_CASE("split") {
     std::string              s        = "msg,level";
     std::vector<std::string> expected = {"msg", "level"};
@@ -105,22 +101,6 @@ TEST_CASE("trim") {
     s = "  this is cool  ; ";
     trimInPlace(s);
     CHECK(s == "this is cool  ;");
-}
-
-TEST_CASE("Parse terms from query") {
-    CHECK(termsFromQuery("") == std::vector<std::string>{});
-    CHECK(termsFromQuery("msg") == std::vector<std::string>{"msg"});
-    CHECK(
-        termsFromQuery("msg,level") == std::vector<std::string>{"msg", "level"}
-    );
-    CHECK(
-        termsFromQuery("msg, level\n") ==
-        std::vector<std::string>{"msg", "level"}
-    );
-    CHECK(
-        termsFromQuery(" msg ,  level ") ==
-        std::vector<std::string>{"msg", "level"}
-    );
 }
 
 TEST_CASE("Parse expression") {
@@ -212,11 +192,8 @@ TEST_CASE("Glob Expr *") {
     // fmt::println("Expr: {}", expr->toJson().dump());
     // fmt::println("Expr: {}", Expr("*").toJson().dump());
     // fmt::println("");
-    CHECK(expr == Expr("*"));
-
-    json line = {{"msg", "hi"}, {"level", 2}, {"foo", "bye"}};
-    auto out  = filterLine(line, {*expr});
-    CHECK(out == line);
+    CHECK(*expr == Expr("*"));
+    CHECK(expr->path.ptr == json::json_pointer(""));
 }
 
 TEST_CASE("Parse line into exprs") {
@@ -232,38 +209,6 @@ TEST_CASE("Parse line into exprs") {
         CHECK((*exprs)[1].path.to_string() == "/x");
         CHECK(*(*exprs)[1].op == Expr::Op::eq);
         CHECK(*(*exprs)[1].rhs == Value(2));
-    }
-}
-
-TEST_CASE("Filter Line by Exprs") {
-    SUBCASE("msg; passes") {
-        auto exprs = *parser::parseExprs("msg");
-        json line  = {{"msg", "hi msg"}, {"x", 2}};
-        json out   = filterLine(line, exprs);
-
-        // fmt::println("out: {}", out.dump());
-        CHECK(json({{"msg", "hi msg"}}) == out);
-        // fmt::println("");
-    }
-
-    SUBCASE("msg, x == 2; passes") {
-        auto exprs = *parser::parseExprs("msg, x == 2");
-        json line  = {{"msg", "hi msg"}, {"x", 2}};
-        json out   = filterLine(line, exprs);
-
-        // fmt::println("out: {}", out.dump());
-        CHECK(line == out);
-        // fmt::println("");
-    }
-
-    SUBCASE("msg, x == 1; fails") {
-        auto exprs = *parser::parseExprs("msg, x == 1");
-        json line  = {{"msg", "hi msg"}, {"x", 2}};
-        json out   = filterLine(line, exprs);
-
-        // fmt::println("out: {}", out.dump());
-        CHECK(json() == out);
-        // fmt::println("");
     }
 }
 
@@ -455,22 +400,15 @@ TEST_CASE("Run Query") {
         {{"count", 23}},
     });
 
-    folly::Synchronized<QueryResult> queryResult;
-    std::function<void()>            onUpdate = []() {};
-
     SUBCASE("msg only") {
         // fmt::println("\nRun Query Test > msg only");
         auto maybeQuery = Query::parse("msg");
         CHECK(maybeQuery != std::nullopt);
         Query& query = *maybeQuery;
-        runQuery(index, queryResult, onUpdate, std::move(query));
+        auto   qr    = runQueryOnIndex(index, std::move(query));
 
         {
-            auto qr = queryResult.rlock();
-            // fmt::println("QueryResult.lines.size(): {}", qr->lines.size());
-            for (const auto& line : qr->lines) {
-                // fmt::println("{}", line);
-            }
+            CHECK(qr != std::nullopt);
             CHECK(qr->lines.size() == 1);
             std::vector<std::string> expected = {"msg: \"from the future\""};
             CHECK(qr->lines == expected);
@@ -482,14 +420,10 @@ TEST_CASE("Run Query") {
         auto maybeQuery = Query::parse("count");
         CHECK(maybeQuery != std::nullopt);
         Query& query = *maybeQuery;
-        runQuery(index, queryResult, onUpdate, std::move(query));
+        auto   qr    = runQueryOnIndex(index, std::move(query));
 
         {
-            auto qr = queryResult.rlock();
-            // fmt::println("QueryResult.lines.size(): {}", qr->lines.size());
-            for (const auto& line : qr->lines) {
-                // fmt::println("{}", line);
-            }
+            CHECK(qr != std::nullopt);
             std::vector<std::string> expected = {"count: 23", "count: 21"};
             CHECK(qr->lines.size() == 2);
             CHECK(qr->lines == expected);
@@ -501,14 +435,10 @@ TEST_CASE("Run Query") {
         auto maybeQuery = Query::parse("count > 22");
         CHECK(maybeQuery != std::nullopt);
         Query& query = *maybeQuery;
-        runQuery(index, queryResult, onUpdate, std::move(query));
+        auto   qr    = runQueryOnIndex(index, std::move(query));
 
         {
-            auto qr = queryResult.rlock();
-            // fmt::println("QueryResult.lines.size(): {}", qr->lines.size());
-            for (const auto& line : qr->lines) {
-                // fmt::println("{}", line);
-            }
+            CHECK(qr != std::nullopt);
             std::vector<std::string> expected = {"count: 23"};
             CHECK(qr->lines.size() == 1);
             CHECK(qr->lines == expected);
@@ -520,18 +450,16 @@ TEST_CASE("Run Query") {
         auto maybeQuery = Query::parse("msg, count == 21");
         CHECK(maybeQuery != std::nullopt);
         Query& query = *maybeQuery;
-        runQuery(index, queryResult, onUpdate, std::move(query));
+        auto   qr    = runQueryOnIndex(index, std::move(query));
 
         {
-            auto qr = queryResult.rlock();
-            // fmt::println("QueryResult.lines.size(): {}", qr->lines.size());
-            for (const auto& line : qr->lines) {
-                // fmt::println("{}", line);
-            }
+            CHECK(qr != std::nullopt);
             CHECK(qr->lines.size() == 1);
             std::vector<std::string> expected = {
                 "msg: \"from the future\",  count: 21"
             };
+            fmt::println("qr->lines {}", qr->lines);
+            fmt::println("expected  {}", expected);
             CHECK(qr->lines == expected);
         }
     }
@@ -541,14 +469,10 @@ TEST_CASE("Run Query") {
         auto maybeQuery = Query::parse("*");
         CHECK(maybeQuery != std::nullopt);
         Query& query = *maybeQuery;
-        runQuery(index, queryResult, onUpdate, std::move(query));
+        auto   qr    = runQueryOnIndex(index, std::move(query));
 
         {
-            auto qr = queryResult.rlock();
-            // fmt::println("QueryResult.lines.size(): {}", qr->lines.size());
-            for (const auto& line : qr->lines) {
-                // fmt::println("{}", line);
-            }
+            CHECK(qr != std::nullopt);
             CHECK(qr->lines.size() == 2);
             std::vector<std::string> expected = {
                 "count: 23", "msg: \"from the future\",  count: 21"
@@ -557,7 +481,6 @@ TEST_CASE("Run Query") {
         }
     }
 }
-*/
 
 template <typename T, typename Func>
 void print(const std::vector<T>& v, Func f) {
@@ -577,7 +500,6 @@ void printJson(const std::vector<json>& v) {
     print(v, [](const json& j) { return j.dump(); });
 }
 
-/*
 TEST_CASE("Ingestor") {
     // set up tmp file with data
     std::vector<json> sampleData = {
@@ -607,6 +529,7 @@ TEST_CASE("Ingestor") {
         queue.blockingRead(msg);
         std::visit(
             overloaded{
+                [](StopSignal&) {},
                 [&](Index& index) { f(index); },
                 [&](Query& query) {
                     fmt::println("Received `Query` branch in Ingestor test");
@@ -685,9 +608,9 @@ TEST_CASE("Ingestor") {
 
     shutdownFlag.store(true);
     ingestor.join();
+    std::filesystem::remove(tmpFilename);
     fmt::println("Ingestor successfully shutdown");
 }
-*/
 
 TEST_CASE("QueryService") {
     auto make = [](std::vector<json>& lines) {

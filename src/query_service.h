@@ -85,7 +85,7 @@ std::string formatResult(const json& obj) {
     std::string out;
     for (auto it = obj.items().begin(); it != obj.items().end(); ++it) {
         if (!out.empty()) {
-            out += ", ";
+            out += ",  ";
         }
         fmt::format_to(
             std::back_inserter(out), "{}: {}", it.key(), it.value().dump()
